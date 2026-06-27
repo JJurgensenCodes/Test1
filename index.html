@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CryptoLounge_Beta_V0.3.1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1117; --card:#161b22; --fg:#e6edf3; --muted:#8b949e;
+    --green:#3fb950; --red:#f85149; --accent:#58a6ff; --gold:#d29922;
+    --whale:#2d333b; --purple:#a371f7;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .wrap{max-width:1360px;margin:0 auto;padding:18px 20px 60px;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--whale);margin-bottom:12px;flex-wrap:wrap;gap:10px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo-badge{width:36px;height:36px;border-radius:8px;flex-shrink:0;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .brand h1{font-size:14px;letter-spacing:.1em;margin:0;font-weight:600;text-transform:uppercase;}
+  .brand small{color:var(--muted);font-size:11px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);}
+  .dot.live{background:var(--green);box-shadow:0 0 8px var(--green);}
+  .dot.err{background:var(--red);}
+  .topbar-right{display:flex;align-items:center;gap:10px;}
+  .tz-select{background:var(--card);border:1px solid var(--whale);color:var(--muted);border-radius:6px;padding:5px 8px;font-size:11px;font-family:'IBM Plex Mono',monospace;}
+  .clock{font-size:13px;color:var(--fg);font-weight:600;}
+
+  .version-badge{background:var(--whale);color:var(--accent);border:1px solid var(--accent);border-radius:14px;padding:4px 10px;font-size:10px;font-family:'IBM Plex Mono',monospace;cursor:pointer;font-weight:600;letter-spacing:.04em;margin-left:4px;}
+  .version-badge:hover{background:rgba(88,166,255,.15);}
+  .patch-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
+  .patch-modal.open{display:flex;}
+  .patch-modal-inner{background:var(--card);border:1px solid var(--whale);border-radius:12px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;padding:20px 22px;}
+  .patch-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--whale);padding-bottom:12px;}
+  .patch-entry{margin-bottom:18px;} .patch-entry:last-child{margin-bottom:0;}
+  .patch-version{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;}
+  .patch-date{color:var(--muted);font-size:11px;margin-left:8px;}
+  .patch-entry ul{margin:8px 0 0 0;padding-left:18px;}
+  .patch-entry li{font-size:12px;color:var(--fg);margin-bottom:5px;line-height:1.5;}
+
+  .wl-banner{display:flex;gap:10px;background:var(--card);border:1px solid var(--whale);border-radius:10px;padding:10px 14px;margin-bottom:16px;align-items:center;flex-wrap:wrap;}
+  .wl-banner .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-right:6px;}
+  .wl-chip{display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:13px;}
+  .wl-chip .n{font-weight:700;font-size:16px;}
+  .wl-chip.win .n{color:var(--green);} .wl-chip.loss .n{color:var(--red);} .wl-chip.rate .n{color:var(--gold);}
+  .wl-chip .l{color:var(--muted);font-size:10px;text-transform:uppercase;}
+  .scope-note{margin-left:auto;font-size:11px;color:var(--muted);}
+
+  .selector-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--card);border:1px solid var(--whale);border-radius:10px;padding:12px 14px;margin-bottom:16px;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;}
+  select,input{background:var(--bg);border:1px solid var(--whale);color:var(--fg);border-radius:6px;padding:7px 9px;font-size:13px;font-family:'IBM Plex Mono',monospace;}
+  input[type=text],input[type=password]{width:230px;}
+  .btn{background:var(--accent);color:#0e1117;border:none;border-radius:6px;padding:8px 14px;font-weight:600;font-size:12px;cursor:pointer;}
+  .btn:hover{filter:brightness(1.1);}
+  .btn.secondary{background:var(--whale);color:var(--fg);}
+  .toggle-group{display:flex;border:1px solid var(--whale);border-radius:6px;overflow:hidden;}
+  .toggle-group button{background:var(--bg);color:var(--muted);border:none;padding:7px 12px;font-size:12px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
+  .toggle-group button.active{background:var(--accent);color:#0e1117;}
+  .check-field{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);}
+
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;}
+  @media (max-width:980px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:var(--card);border:1px solid var(--whale);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .card h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 12px 0;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+  .section-divider{border-top:1px solid var(--whale);margin:14px 0;padding-top:14px;}
+  .section-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;}
+
+  .lean-badge{text-align:center;border-radius:10px;padding:16px 8px;margin-bottom:10px;border:1px solid var(--whale);}
+  .lean-badge .pct{font-size:34px;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+  .lean-badge .lbl{font-size:12px;margin-top:4px;font-weight:600;}
+  .lean-badge.up{background:rgba(63,185,80,.10);} .lean-badge.up .pct,.lean-badge.up .lbl{color:var(--green);}
+  .lean-badge.down{background:rgba(248,81,73,.10);} .lean-badge.down .pct,.lean-badge.down .lbl{color:var(--red);}
+  .yn-bar{display:flex;height:22px;border-radius:6px;overflow:hidden;border:1px solid var(--whale);}
+  .yn-bar .yes-seg{background:var(--green);display:flex;align-items:center;justify-content:center;color:#06210d;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+  .yn-bar .no-seg{background:var(--red);display:flex;align-items:center;justify-content:center;color:#2a0807;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+  .yn-caption{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:5px;}
+
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;}
+  .stat{background:var(--bg);border:1px solid var(--whale);border-radius:8px;padding:9px 10px;}
+  .stat .lbl{font-size:9px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;}
+  .stat .val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;margin-top:2px;}
+  .stat .val.pos{color:var(--green);} .stat .val.neg{color:var(--red);} .stat .val.gold{color:var(--gold);}
+
+  .final-call{margin-top:10px;border-radius:10px;padding:14px;text-align:center;border:1px solid var(--whale);}
+  .final-call.up{background:rgba(63,185,80,.10);} .final-call.down{background:rgba(248,81,73,.10);}
+  .final-call .label{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
+  .final-call .big{font-size:22px;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+  .final-call.up .big{color:var(--green);} .final-call.down .big{color:var(--red);}
+  .final-call .conf{font-size:11px;color:var(--muted);margin-top:3px;}
+  .final-call .held-note{font-size:10px;color:var(--gold);margin-top:6px;display:none;}
+  .final-call.held .held-note{display:block;}
+  .final-call.warmup .held-note{display:block;color:var(--muted);}
+  .fc-meta{display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;}
+  .bet-badge,.agree-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;background:var(--bg);border:1px solid var(--whale);color:var(--fg);}
+  .agree-badge.strong-agree{color:var(--green);border-color:rgba(63,185,80,.4);}
+  .agree-badge.weak-agree{color:var(--gold);border-color:rgba(210,153,34,.4);}
+
+  .weight-pill{font-size:9px;color:var(--muted);background:var(--bg);border:1px solid var(--whale);border-radius:8px;padding:1px 6px;margin-left:6px;font-weight:500;}
+  .model-record{font-size:10px;color:var(--muted);margin-left:4px;}
+  .conf-tag{font-size:10px;color:var(--muted);font-weight:500;}
+  .agree-tag{font-size:9px;border-radius:8px;padding:1px 6px;margin-left:4px;}
+  .agree-tag.agree{background:rgba(63,185,80,.15);color:var(--green);}
+  .agree-tag.disagree{background:rgba(248,81,73,.15);color:var(--red);}
+
+  .mr-row{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border:1px solid var(--whale);border-radius:8px;padding:9px 11px;margin-bottom:8px;}
+  .mr-row .mr-label{font-size:11px;color:var(--muted);}
+  .mr-row .mr-value{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;text-align:right;}
+  .mr-row.bullish{border-color:rgba(63,185,80,.4);} .mr-row.bullish .mr-value{color:var(--green);}
+  .mr-row.bearish{border-color:rgba(248,81,73,.4);} .mr-row.bearish .mr-value{color:var(--red);}
+
+  table.history{width:100%;border-collapse:collapse;font-size:11px;}
+  table.history th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--whale);text-transform:uppercase;font-size:9px;letter-spacing:.05em;}
+  table.history td{padding:6px 8px;border-bottom:1px solid var(--whale);font-family:'IBM Plex Mono',monospace;}
+  .tag{padding:2px 7px;border-radius:10px;font-size:9px;font-weight:600;text-transform:uppercase;}
+  .tag.win{background:rgba(63,185,80,.15);color:var(--green);}
+  .tag.loss{background:rgba(248,81,73,.15);color:var(--red);}
+  .tag.pending{background:rgba(210,153,34,.15);color:var(--gold);}
+
+  .footer-note{font-size:11px;color:var(--muted);line-height:1.6;border-top:1px solid var(--whale);padding-top:14px;margin-top:6px;}
+  .footer-note b{color:var(--fg);}
+  .price-row{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:6px;}
+  .price-main .value{font-size:38px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}
+  .price-main .sub{color:var(--muted);font-size:11px;margin-top:6px;}
+  .pill{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);border:1px solid var(--whale);border-radius:20px;padding:4px 10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo-badge">⚡</div>
+      <div>
+        <h1 id="appTitle">CryptoLounge_Beta_V0.3.1</h1>
+        <small id="connLabel">connecting…</small>
+      </div>
+      <div class="dot" id="connDot"></div>
+      <button class="version-badge" id="versionBadge" title="View patch notes">v0.1 · Patch Notes</button>
+    </div>
+    <div class="topbar-right">
+      <select class="tz-select" id="tzSelect">
+        <option value="America/Los_Angeles">Pacific (PT)</option>
+        <option value="America/Denver">Mountain (MT)</option>
+        <option value="America/Chicago">Central (CT)</option>
+        <option value="America/New_York">Eastern (ET)</option>
+        <option value="UTC">UTC</option>
+        <option value="Europe/London">London</option>
+        <option value="Asia/Tokyo">Tokyo</option>
+      </select>
+      <div class="clock mono" id="clock">--:--:--</div>
+    </div>
+  </div>
+
+  <div class="patch-modal" id="patchModal">
+    <div class="patch-modal-inner">
+      <div class="patch-modal-header">
+        <h2 style="margin:0;">Patch Notes</h2>
+        <button class="btn secondary" id="closePatchModal">Close</button>
+      </div>
+      <div id="patchList"></div>
+    </div>
+  </div>
+
+  <div class="wl-banner">
+    <span class="label">Win / Loss Record</span>
+    <div class="wl-chip win"><span class="n" id="wlWins">0</span><span class="l">Wins</span></div>
+    <div class="wl-chip loss"><span class="n" id="wlLosses">0</span><span class="l">Losses</span></div>
+    <div class="wl-chip rate"><span class="n" id="wlRate">--</span><span class="l">Win Rate</span></div>
+    <span class="scope-note" id="kalshiScopeNote"></span>
+  </div>
+
+  <div class="selector-row">
+    <div class="field">
+      <label>Market</label>
+      <select id="assetSelect">
+        <option value="BTC">BTC</option>
+        <option value="ETH">ETH</option>
+        <option value="SOL">SOL</option>
+        <option value="XRP">XRP</option>
+        <option value="DOGE">DOGE</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Horizon</label>
+      <div class="toggle-group" id="horizonToggle">
+        <button data-h="15m" class="active">15-Min</button>
+        <button data-h="1h">1-Hour</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Discord webhook (optional)</label>
+      <input type="password" id="webhookInput" placeholder="https://discord.com/api/webhooks/..." />
+    </div>
+    <button class="btn" id="sendDiscordBtn">📨 Send this call</button>
+    <label class="check-field"><input type="checkbox" id="autoDiscordChk" /> Auto-send (STRONG/HIGH/MEDIUM only)</label>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div>
+      <div class="card">
+        <h2>Price &amp; Probability <span class="pill" id="strikePill">strike --</span></h2>
+        <div class="price-row">
+          <div class="price-main">
+            <div class="value mono" id="priceValue">--</div>
+            <div class="sub" id="windowLabel">--</div>
+          </div>
+        </div>
+
+        <div class="lean-badge toss" id="leanBadge">
+          <div class="pct" id="leanPct">--%</div>
+          <div class="lbl" id="leanLabel">Toss-up</div>
+        </div>
+        <div class="yn-bar">
+          <div class="yes-seg" id="yesSeg" style="width:50%;">UP --%</div>
+          <div class="no-seg" id="noSeg" style="width:50%;">DOWN --%</div>
+        </div>
+        <div class="yn-caption"><span>Probability Up</span><span>Probability Down</span></div>
+
+        <div class="final-call" id="finalCall">
+          <div class="label">⚡ Final Call</div>
+          <div class="big" id="finalCallText">awaiting signal</div>
+          <div class="conf" id="finalCallConf">confidence --</div>
+          <div class="fc-meta">
+            <span class="bet-badge" id="betBadge"></span>
+            <span class="agree-badge" id="agreeBadge"></span>
+          </div>
+          <div class="held-note" id="finalCallHeldNote"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>History</h2>
+        <table class="history" id="historyTable">
+          <thead><tr><th>Window</th><th>Strike</th><th>Predicted</th><th>Confidence</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="card">
+        <h2>Confluence Model — Indicator Breakdown <span class="pill" id="agreePill">--/--</span></h2>
+        <div id="votesBox"></div>
+      </div>
+
+      <div class="card">
+        <h2>Bridge / Physics / Synthesis Components</h2>
+        <div id="modelsBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    <b>CryptoLounge_Beta_V0.3.1</b> — Data blended across Coinbase / Kraken / Gemini / Crypto.com. Not financial advice.
+  </div>
+</div>
+
+<script>
+const API = "";
+let state = { asset: "BTC", horizon: "15m", changelog: null };
+
+function $(id){ return document.getElementById(id); }
+
+async function loadChangelog(){
+  const r = await fetch(API + "/api/changelog");
+  state.changelog = await r.json();
+  $("appTitle").textContent = "CryptoLounge_Beta_" + state.changelog.beta_version;
+  $("versionBadge").textContent = state.changelog.beta_version + " · Patch Notes";
+  const list = $("patchList");
+  list.innerHTML = "";
+  state.changelog.entries.forEach(entry => {
+    const div = document.createElement("div");
+    div.className = "patch-entry";
+    div.innerHTML = `<span class="patch-version">v${entry.version}</span><span class="patch-date">${entry.date}</span>
+      <ul>${entry.notes.map(n => `<li>${n}</li>`).join("")}</ul>`;
+    list.appendChild(div);
+  });
+}
+
+function tickClock(){
+  const tz = $("tzSelect").value;
+  try {
+    $("clock").textContent = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: tz
+    }).format(new Date());
+  } catch(e) { $("clock").textContent = new Date().toLocaleTimeString(); }
+  setTimeout(tickClock, 1000);
+}
+
+function setConn(ok){
+  $("connDot").className = "dot " + (ok ? "live" : "err");
+  $("connLabel").textContent = ok ? "live" : "connection issue";
+}
+
+function renderVotes(votes){
+  const box = $("votesBox");
+  box.innerHTML = "";
+  if (!votes || !votes.length){ box.textContent = "No data yet."; return; }
+  votes.forEach(([label, dir, detail]) => {
+    const row = document.createElement("div");
+    row.className = "mr-row " + (dir > 0 ? "bullish" : dir < 0 ? "bearish" : "");
+    row.innerHTML = `<div class="mr-label">${label}</div><div class="mr-value">${detail}</div>`;
+    box.appendChild(row);
+  });
+}
+
+function renderModels(sig){
+  const box = $("modelsBox");
+  const ens = sig.ensemble || {};
+  const weights = ens.weights_used || {};
+  const fcDir = (sig.final_call || sig).direction;
+  const rows = [];
+
+  if (sig.synthesis_signal){
+    const up = sig.synthesis_signal === "ABOVE";
+    rows.push({label:"Synthesis", value:`${sig.synthesis_signal} <span class="conf-tag">${sig.synthesis_confidence||""}</span>`,
+               cls: sig.synthesis_signal==="NEUTRAL" ? "" : (up?"bullish":"bearish"), weight:weights.synthesis});
+  }
+  if (sig.bridge && sig.bridge.signal){
+    const up = sig.bridge.signal === "ABOVE";
+    const rec = sig.bridge_record ? ` <span class="model-record">${sig.bridge_record}</span>` : "";
+    rows.push({label:"Bridge", value:`${sig.bridge.signal}${rec}`,
+               cls: sig.bridge.signal==="NEUTRAL" ? "" : (up?"bullish":"bearish"), weight:weights.bridge});
+  }
+  if (sig.physics && sig.physics.signal){
+    const up = sig.physics.signal === "ABOVE";
+    const rec = sig.physics_record ? ` <span class="model-record">${sig.physics_record}</span>` : "";
+    rows.push({label:"Physics", value:`${sig.physics.signal}${rec}`,
+               cls: sig.physics.signal==="NEUTRAL" ? "" : (up?"bullish":"bearish"), weight:weights.physics});
+  }
+  if (sig.polymarket){
+    const pm = sig.polymarket;
+    const up = pm.up_pct > 50;
+    const agree = up === (fcDir === "UP");
+    const tag = agree ? `<span class="agree-tag agree">agrees</span>` : `<span class="agree-tag disagree">disagrees</span>`;
+    const rec = sig.poly_record ? ` <span class="model-record">${sig.poly_record}</span>` : "";
+    rows.push({label:"Polymarket", value:`UP ${pm.up_pct.toFixed(0)}% / DOWN ${pm.down_pct.toFixed(0)}% ${tag}${rec}`,
+               cls: up?"bullish":"bearish", weight:weights.polymarket});
+  }
+  if (weights.confluence != null){
+    rows.push({label:"Confluence (indicators)", value:`${sig.direction} <span class="conf-tag">${sig.confidence}</span>`,
+               cls: sig.direction==="UP" ? "bullish" : "bearish", weight:weights.confluence});
+  }
+
+  // Highest-influence model first, so it's visually obvious what's driving the call.
+  rows.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+
+  const html = rows.map(r => {
+    const w = (r.weight != null) ? `<span class="weight-pill">${(r.weight * 100).toFixed(0)}% influence</span>`
+             : (r.label === "Bridge" || r.label === "Physics") ? `<span class="weight-pill">feeds Synthesis</span>` : "";
+    return `<div class="mr-row ${r.cls}"><div class="mr-label">${r.label}${w}</div><div class="mr-value">${r.value}</div></div>`;
+  }).join("");
+
+  box.innerHTML = html || `<div style="color:var(--muted);font-size:12px;">Not available for this market/horizon.</div>`;
+}
+
+function fmtWindowLabel(sig){
+  if (!sig.window_label) return "--";
+  return sig.window_label;
+}
+
+async function refreshSignal(){
+  const url = `${API}/api/signal?asset=${state.asset}&horizon=${state.horizon}`;
+  try {
+    const r = await fetch(url);
+    const sig = await r.json();
+    setConn(!sig.error);
+    if (sig.error){
+      $("finalCallText").textContent = sig.error;
+      $("finalCallConf").textContent = "";
+      return;
+    }
+    state.lastSignal = sig;
+
+    $("priceValue").textContent = sig.price ? "$" + sig.price.toLocaleString(undefined,{maximumFractionDigits:2}) : "--";
+    $("windowLabel").textContent = fmtWindowLabel(sig);
+    $("strikePill").textContent = sig.strike != null ? "strike $" + sig.strike.toLocaleString(undefined,{maximumFractionDigits:2}) : "no strike market";
+
+    // Single source of truth for EVERYTHING below: the stabilized Final Call.
+    // Deriving the lean badge and the UP/DOWN bar from this (not the raw,
+    // separately-computed sig.direction/confluence_prob) is what guarantees
+    // they can never show numbers that contradict each other.
+    const fc = sig.final_call || {direction: sig.direction, confidence: sig.confidence,
+                                    prob: sig.confluence_prob, held: false, warmup: false};
+    const dirUp = fc.direction === "UP";
+    const probPct = fc.prob;  // probability OF fc.direction, not necessarily of UP
+
+    $("leanBadge").className = "lean-badge " + (dirUp ? "up" : "down");
+    $("leanPct").textContent = probPct.toFixed(0) + "%";
+    $("leanLabel").textContent = fc.direction;
+
+    const upPct = dirUp ? probPct : (100 - probPct);
+    const downPct = 100 - upPct;
+    $("yesSeg").style.width = upPct + "%";
+    $("yesSeg").textContent = "UP " + upPct.toFixed(0) + "%";
+    $("noSeg").style.width = downPct + "%";
+    $("noSeg").textContent = "DOWN " + downPct.toFixed(0) + "%";
+
+    $("finalCall").className = "final-call " + (dirUp ? "up" : "down") + (fc.held ? " held" : "") + (fc.warmup ? " warmup" : "");
+    $("finalCallText").textContent = fc.warmup ? "⏳ gathering data..." : ((dirUp ? "🟢 " : "🔴 ") + fc.direction + " — " + fc.confidence);
+    $("finalCallConf").textContent = fc.prob.toFixed(0) + "% probability";
+    $("betBadge").textContent = sig.bet_size || "";
+    const agr = sig.indicator_agreement;
+    if (agr && agr.total_decisive > 0){
+      const pct = agr.agree / agr.total_decisive;
+      $("agreeBadge").textContent = `${agr.agree}/${agr.total_decisive} agree (${agr.total_registered} indicators total)`;
+      $("agreeBadge").className = "agree-badge " + (pct >= 0.75 ? "strong-agree" : pct >= 0.5 ? "weak-agree" : "");
+      $("agreePill").textContent = `${agr.agree}/${agr.total_decisive} of ${agr.total_registered}`;
+    } else {
+      $("agreeBadge").textContent = "";
+      $("agreePill").textContent = "--/--";
+    }
+    $("finalCallHeldNote").textContent = fc.warmup ? "first minute of the window — settling in" :
+                                          (fc.held ? "⏸ holding previous call — move not confirmed yet" : "");
+
+    renderVotes(sig.votes);
+    renderModels(sig);
+
+    if ($("autoDiscordChk").checked && $("webhookInput").value){
+      maybeAutoSend(sig);
+    }
+  } catch(e){
+    setConn(false);
+  }
+}
+
+let lastAutoSentKey = null;
+function maybeAutoSend(sig){
+  const key = sig.asset + "|" + sig.horizon + "|" + sig.window_label;
+  if (key === lastAutoSentKey) return;
+  const fc = sig.final_call || sig;
+  if (fc.held) return;  // don't alert on a call that's still being held/unconfirmed
+  if (["STRONG","HIGH","MEDIUM"].includes(fc.confidence)){
+    sendToDiscord();
+    lastAutoSentKey = key;
+  }
+}
+
+async function sendToDiscord(){
+  const webhook = $("webhookInput").value;
+  if (!webhook) return;
+  await fetch(API + "/api/discord", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({asset: state.asset, horizon: state.horizon, webhook})
+  });
+}
+
+async function refreshStats(){
+  try {
+    const r = await fetch(`${API}/api/stats?asset=${state.asset}`);
+    const d = await r.json();
+    $("wlWins").textContent = d.wins;
+    $("wlLosses").textContent = d.losses;
+    $("wlRate").textContent = (d.win_rate != null) ? d.win_rate.toFixed(0) + "%" : "--";
+    $("kalshiScopeNote").textContent = state.asset + " · only counts the live 15-min Kalshi window";
+
+    const tbody = document.querySelector("#historyTable tbody");
+    tbody.innerHTML = "";
+    (d.history || []).forEach(row => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${row.window || "--"}</td><td>${row.strike != null ? "$"+Number(row.strike).toLocaleString() : "--"}</td>
+        <td>${row.direction || "--"}</td><td>${row.confidence || "--"}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
+document.getElementById("versionBadge").addEventListener("click", ()=> $("patchModal").classList.add("open"));
+document.getElementById("closePatchModal").addEventListener("click", ()=> $("patchModal").classList.remove("open"));
+document.getElementById("patchModal").addEventListener("click", (e)=>{ if (e.target.id === "patchModal") $("patchModal").classList.remove("open"); });
+
+$("assetSelect").addEventListener("change", (e)=>{ state.asset = e.target.value; refreshSignal(); refreshStats(); });
+document.querySelectorAll("#horizonToggle button").forEach(btn => {
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll("#horizonToggle button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    state.horizon = btn.dataset.h;
+    refreshSignal();
+  });
+});
+$("sendDiscordBtn").addEventListener("click", sendToDiscord);
+
+loadChangelog();
+tickClock();
+refreshSignal();
+refreshStats();
+setInterval(refreshSignal, 8000);
+setInterval(refreshStats, 20000);
+</script>
+</body>
+</html>

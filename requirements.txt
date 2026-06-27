@@ -1,0 +1,6 @@
+ccxt
+requests
+python-dotenv
+flask
+pyinstaller
+gunicorn

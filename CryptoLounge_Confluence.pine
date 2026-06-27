@@ -1,0 +1,294 @@
+// =============================================================================
+// CryptoLounge — Confluence Model (TradingView port)
+// =============================================================================
+// Ports the SAME 13-indicator confluence model + QQE that core.py runs, as
+// faithfully as Pine Script allows. Use on the 1-MINUTE chart — it pulls its
+// own 5m/15m/1h context via request.security(), exactly like the Python
+// engine blends multiple timeframes from one poll.
+//
+// WHAT THIS CANNOT DO (Pine Script has no REST/API access — only TradingView
+// symbols via request.security):
+//   - Bridge / Physics / Synthesis (the stochastic-process models) — not
+//     ported. They're 1,500+ lines of custom math with no TradingView
+//     equivalent data inputs (implied vol surface, etc.) to feed them.
+//   - Polymarket odds, Kalshi's live YES price — no REST access from Pine.
+//     Kalshi Strike below is a MANUAL input you type in, same workaround
+//     your own Script_TACH.txt already used for this exact limitation.
+//   - Order Book Imbalance / Whale Trade Flow — Pine has no L2 order book or
+//     trade-tape access for arbitrary exchanges.
+// Everything else (14 of the ~16 live indicators) is ported with the exact
+// same thresholds/weights as core.py, so a STRONG/HIGH call here should mean
+// the same thing it means in the dashboard.
+//
+// Built as a strategy() (not just indicator()) so TradingView's own Strategy
+// Tester gives you a real, native win-rate report on this logic over
+// historical data — enters at each window's first minute, exits 15 minutes
+// later, exactly like a real Kalshi 15-min bet.
+// =============================================================================
+//@version=6
+strategy("CryptoLounge — Confluence Model", overlay=true, initial_capital=1000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=20,
+     pyramiding=0, process_orders_on_close=true, calc_on_every_tick=false)
+
+// ========================== INPUTS ==========================
+bool use_manual_target = input.bool(true, "Use Manual Kalshi Strike (Target Gap indicator)",
+     tooltip="Pine can't fetch Kalshi's live strike via API. Type in the current window's floor_strike from the dashboard/Kalshi site to enable the Target Gap indicator. Leave off to skip it.")
+float manual_target    = input.float(0.0, "Manual Kalshi Strike ($)", step=1.0)
+
+int   min_confidence_to_trade = input.int(2, "Min confidence to enter a backtest trade",
+     minval=0, maxval=3, tooltip="0=LEAN, 1=MEDIUM, 2=HIGH, 3=STRONG. Matches core.py's confidence tiers.")
+
+bool  show_table = input.bool(true, "Show indicator breakdown table")
+
+// ========================== MULTI-TIMEFRAME CONTEXT ==========================
+// Mirrors core.py's fetch_blended_ohlcv("5m"/"15m"/"1h") — pulled via
+// request.security off whatever symbol the chart is on, lookahead off so
+// nothing repaints.
+float close5  = request.security(syminfo.tickerid, "5",  close,  lookahead=barmerge.lookahead_off)
+float open5   = request.security(syminfo.tickerid, "5",  open,   lookahead=barmerge.lookahead_off)
+float vol5    = request.security(syminfo.tickerid, "5",  volume, lookahead=barmerge.lookahead_off)
+float close15 = request.security(syminfo.tickerid, "15", close,  lookahead=barmerge.lookahead_off)
+float close60 = request.security(syminfo.tickerid, "60", close,  lookahead=barmerge.lookahead_off)
+float open1   = open                                          // current chart IS the 1m series
+float close1  = close
+
+// ========================== VOTE ACCUMULATOR ==========================
+// Pine has no dynamic list-of-structs the way Python does, so each
+// indicator's vote/weight/decisive flag is tracked in parallel arrays —
+// functionally the same as core.py's `votes: list[Vote]`.
+var array<string> v_label  = array.new<string>()
+var array<float>  v_dir    = array.new<float>()
+var array<float>  v_weight = array.new<float>()
+var array<string> v_detail = array.new<string>()
+
+addVote(string lbl, float dir, float w, string detail) =>
+    array.push(v_label, lbl)
+    array.push(v_dir, dir)
+    array.push(v_weight, w)
+    array.push(v_detail, detail)
+
+if barstate.isnew or barstate.isconfirmed
+    array.clear(v_label)
+    array.clear(v_dir)
+    array.clear(v_weight)
+    array.clear(v_detail)
+
+// ========================== 1. EMA 9/21 (5m) — threshold 0.05% ==========================
+float ema9_5  = request.security(syminfo.tickerid, "5", ta.ema(close, 9),  lookahead=barmerge.lookahead_off)
+float ema21_5 = request.security(syminfo.tickerid, "5", ta.ema(close, 21), lookahead=barmerge.lookahead_off)
+float emaSpread5 = (ema9_5 - ema21_5) / close5 * 100
+if math.abs(emaSpread5) > 0.05
+    addVote("EMA 9/21", emaSpread5 > 0 ? 1 : -1, 1.0, "spread " + str.tostring(emaSpread5, "#.###") + "%")
+else
+    addVote("EMA 9/21", 0, 1.0, "too narrow")
+
+// ========================== 2. Velocity ROC(5) (5m, 25min lookback) — threshold 0.05% ==========================
+float roc5 = request.security(syminfo.tickerid, "5", ta.roc(close, 5), lookahead=barmerge.lookahead_off)
+if roc5 > 0.05
+    addVote("Velocity ROC(5)", 1, 1.0, "rising " + str.tostring(roc5, "#.###") + "%")
+else if roc5 < -0.05
+    addVote("Velocity ROC(5)", -1, 1.0, "falling " + str.tostring(roc5, "#.###") + "%")
+else
+    addVote("Velocity ROC(5)", 0, 1.0, "flat")
+
+// ========================== 3. RSI(7) (5m) — >62 bullish, <38 bearish ==========================
+float rsi7 = request.security(syminfo.tickerid, "5", ta.rsi(close, 7), lookahead=barmerge.lookahead_off)
+if rsi7 > 62
+    addVote("RSI(7)", 1, 1.0, str.tostring(rsi7, "#.#") + " bullish")
+else if rsi7 < 38
+    addVote("RSI(7)", -1, 1.0, str.tostring(rsi7, "#.#") + " bearish")
+else
+    addVote("RSI(7)", 0, 1.0, str.tostring(rsi7, "#.#") + " neutral")
+
+// ========================== 4. MACD(5,13,5) (5m) — expanding histogram only ==========================
+f_macdHist(src, fastLen, slowLen, sigLen) =>
+    [_, _, hist] = ta.macd(src, fastLen, slowLen, sigLen)
+    hist
+
+float histLine5 = request.security(syminfo.tickerid, "5", f_macdHist(close, 5, 13, 5), lookahead=barmerge.lookahead_off)
+float histPrev5 = request.security(syminfo.tickerid, "5", f_macdHist(close, 5, 13, 5)[1], lookahead=barmerge.lookahead_off)
+bool macdExpanding = math.abs(histLine5) > math.abs(histPrev5)
+if macdExpanding
+    addVote("MACD(5,13)", histLine5 > 0 ? 1 : -1, 1.0, "hist " + str.tostring(histLine5, "#.####") + " expanding")
+else
+    addVote("MACD(5,13)", 0, 1.0, "fading — neutral")
+
+// ========================== 5. Bollinger (5m, 20, 2.0) — extreme 20% zone only ==========================
+float bbMid5   = request.security(syminfo.tickerid, "5", ta.sma(close, 20), lookahead=barmerge.lookahead_off)
+float bbStd5   = request.security(syminfo.tickerid, "5", ta.stdev(close, 20), lookahead=barmerge.lookahead_off)
+float bbUpper5 = bbMid5 + 2.0 * bbStd5
+float bbLower5 = bbMid5 - 2.0 * bbStd5
+float bbWidth5 = bbUpper5 - bbLower5
+float bbPos5   = bbWidth5 > 0 ? (close5 - bbLower5) / bbWidth5 : 0.5
+if bbPos5 > 0.75
+    addVote("Bollinger", 1, 1.0, "upper zone " + str.tostring(bbPos5 * 100, "#") + "%")
+else if bbPos5 < 0.25
+    addVote("Bollinger", -1, 1.0, "lower zone " + str.tostring(bbPos5 * 100, "#") + "%")
+else
+    addVote("Bollinger", 0, 1.0, "mid-band — no edge")
+
+// ========================== 6. Volume confirmation (5m) — 1.40x avg ==========================
+float volAvg5 = request.security(syminfo.tickerid, "5", ta.sma(volume[1], 10), lookahead=barmerge.lookahead_off)
+float volRatio5 = volAvg5 > 0 ? vol5 / volAvg5 : 1.0
+float netScoreSoFar = 0.0
+for i = 0 to array.size(v_dir) - 1
+    netScoreSoFar += array.get(v_dir, i) * array.get(v_weight, i)
+if volRatio5 >= 1.40
+    addVote("Volume", netScoreSoFar > 0 ? 1 : netScoreSoFar < 0 ? -1 : 0, 1.0, str.tostring(volRatio5, "#.#") + "x avg — confirming")
+else
+    addVote("Volume", 0, 1.0, str.tostring(volRatio5, "#.#") + "x avg — no confirmation")
+
+// ========================== 6b. OBV (5m) — EMA(5) vs EMA(20) spread, threshold 0.02 ==========================
+float obvFast5 = request.security(syminfo.tickerid, "5", ta.ema(ta.obv, 5),  lookahead=barmerge.lookahead_off)
+float obvSlow5 = request.security(syminfo.tickerid, "5", ta.ema(ta.obv, 20), lookahead=barmerge.lookahead_off)
+float obvSpread5 = (obvFast5 - obvSlow5) / (math.abs(obvSlow5) + 1e-9)
+if math.abs(obvSpread5) > 0.02
+    addVote("OBV", obvSpread5 > 0 ? 1 : -1, 1.0, obvSpread5 > 0 ? "accumulation" : "distribution")
+else
+    addVote("OBV", 0, 1.0, "flat volume flow")
+
+// ========================== 7. VWAP (5m, ~4h/48 bars) — threshold 0.10% ==========================
+float vwap5 = request.security(syminfo.tickerid, "5", ta.vwap(hlc3), lookahead=barmerge.lookahead_off)
+float vwapDiff5 = (close5 - vwap5) / vwap5 * 100
+if math.abs(vwapDiff5) >= 0.10
+    addVote("VWAP", close5 > vwap5 ? 1 : -1, 1.0, (close5 > vwap5 ? "above" : "below") + " VWAP " + str.tostring(vwapDiff5, "#.##") + "%")
+else
+    addVote("VWAP", 0, 1.0, "at VWAP")
+
+// ========================== 8. 15m Trend — EMA9/21 on 15m — threshold 0.08% ==========================
+float ema9_15  = request.security(syminfo.tickerid, "15", ta.ema(close, 9),  lookahead=barmerge.lookahead_off)
+float ema21_15 = request.security(syminfo.tickerid, "15", ta.ema(close, 21), lookahead=barmerge.lookahead_off)
+float spread15 = (ema9_15 - ema21_15) / close15 * 100
+if math.abs(spread15) > 0.08
+    addVote("15m Trend", spread15 > 0 ? 1 : -1, 1.0, (spread15 > 0 ? "bullish " : "bearish ") + str.tostring(spread15, "#.###") + "%")
+else
+    addVote("15m Trend", 0, 1.0, "no clear trend")
+
+// ========================== 9. Window Body — first 1m candle of the Kalshi window — threshold 0.02% ==========================
+// Kalshi 15-min windows are ET-aligned to :00/:15/:30/:45. On a 1m chart,
+// "the window's first candle" is the bar where minute%15==0.
+int etMinute = minute(time, "America/New_York")
+bool isWindowOpenBar = etMinute % 15 == 0
+var float windowOpenPriceState = na
+if isWindowOpenBar
+    windowOpenPriceState := open1
+float wbDiffPct = windowOpenPriceState > 0 ? (close1 - windowOpenPriceState) / windowOpenPriceState * 100 : 0.0
+if math.abs(wbDiffPct) < 0.02
+    addVote("Window Body", 0, 1.0, "flat first minute")
+else
+    addVote("Window Body", wbDiffPct > 0 ? 1 : -1, 1.0, (wbDiffPct > 0 ? "window up " : "window down ") + str.tostring(wbDiffPct, "#.###") + "%")
+
+// ========================== 10. 1h Trend — EMA9/21 on 1h — threshold 0.20% ==========================
+float ema9_60  = request.security(syminfo.tickerid, "60", ta.ema(close, 9),  lookahead=barmerge.lookahead_off)
+float ema21_60 = request.security(syminfo.tickerid, "60", ta.ema(close, 21), lookahead=barmerge.lookahead_off)
+float spread60 = (ema9_60 - ema21_60) / close60 * 100
+if math.abs(spread60) > 0.20
+    addVote("1h Trend", spread60 > 0 ? 1 : -1, 1.0, (spread60 > 0 ? "bullish " : "bearish ") + str.tostring(spread60, "#.###") + "%")
+else
+    addVote("1h Trend", 0, 1.0, "no macro trend")
+
+// ========================== 11. Target Gap — vs manual Kalshi strike — threshold 0.05% ==========================
+if use_manual_target and manual_target > 0
+    float gapPct = (close1 - manual_target) / manual_target * 100
+    if gapPct > 0.05
+        addVote("Target Gap", 1, 1.0, "above target " + str.tostring(gapPct, "#.###") + "%")
+    else if gapPct < -0.05
+        addVote("Target Gap", -1, 1.0, "below target " + str.tostring(gapPct, "#.###") + "%")
+    else
+        addVote("Target Gap", 0, 1.0, "at target — too close")
+
+// ========================== 12. QQE (5m, 14/5/4.236) — weight 2.0, core momentum ==========================
+// Pine has no built-in QQE, so this ports core.py's exact algorithm:
+// smoothed RSI (RsiMa) vs an ATR-of-RSI trailing stop (longband/shortband).
+qqeCalc(simple int rsiLen, simple int smoothLen, simple float qqeFactor) =>
+    float rsiVal = ta.rsi(close, rsiLen)
+    float rsiMa = ta.ema(rsiVal, smoothLen)
+    float atrRsi = ta.ema(math.abs(rsiMa - rsiMa[1]), rsiLen * 2 - 1)
+    float dar = ta.ema(atrRsi, rsiLen * 2 - 1) * qqeFactor
+    var float longband = 0.0
+    var float shortband = 0.0
+    var int trend = 1
+    float newlong = rsiMa - dar
+    float newshort = rsiMa + dar
+    longband := (rsiMa[1] > longband[1] and rsiMa > longband[1]) ? math.max(longband[1], newlong) : newlong
+    shortband := (rsiMa[1] < shortband[1] and rsiMa < shortband[1]) ? math.min(shortband[1], newshort) : newshort
+    if rsiMa[1] <= shortband[1] and rsiMa > shortband[1]
+        trend := 1
+    else if rsiMa[1] >= longband[1] and rsiMa < longband[1]
+        trend := -1
+    [trend, rsiMa, trend == 1 ? longband : shortband]
+
+[qTrend5, qRsiMa5, qLine5] = request.security(syminfo.tickerid, "5", qqeCalc(14, 5, 4.236), lookahead=barmerge.lookahead_off)
+addVote("QQE", qTrend5, 2.0, (qTrend5 == 1 ? "bullish, RsiMa " : "bearish, RsiMa ") + str.tostring(qRsiMa5, "#.#"))
+
+// ========================== AGGREGATE — matches core.py's recommendation() ==========================
+float netScore = 0.0
+int   nDecisive = 0
+int   nUp = 0
+int   nDown = 0
+for i = 0 to array.size(v_dir) - 1
+    float d = array.get(v_dir, i)
+    netScore += d * array.get(v_weight, i)
+    if d != 0
+        nDecisive += 1
+        if d > 0
+            nUp += 1
+        else
+            nDown += 1
+
+string direction = netScore > 0 ? "UP" : netScore < 0 ? "DOWN" : (nUp >= nDown ? "UP" : "DOWN")
+int    nMajority  = math.max(nUp, nDown)
+float  fraction   = nDecisive > 0 ? nMajority / nDecisive : 0.0
+float  absScore   = math.abs(netScore)
+
+int confTier = 0
+float confProb = 55.0
+if fraction >= 0.90 and absScore >= 7
+    confTier := 3
+    confProb := 68.0
+else if fraction >= 0.82 and absScore >= 6
+    confTier := 2
+    confProb := 64.0
+else if fraction >= 0.78 and absScore >= 5
+    confTier := 1
+    confProb := 60.0
+
+string confLabel = confTier == 3 ? "STRONG" : confTier == 2 ? "HIGH" : confTier == 1 ? "MEDIUM" : "LEAN"
+
+// ========================== BACKTEST ENTRIES — one "bet" per window ==========================
+// Enters at the window-open bar and exits 15 bars later (assumes a
+// 1-minute chart -> 15 bars = 15 minutes = one Kalshi window).
+// IMPORTANT: close the previous window's position FIRST, then check
+// whether to enter the new one, both on the same window-open bar — doing
+// it the other way round would skip this window's entry while waiting for
+// the old position to clear.
+bool canTrade = confTier >= min_confidence_to_trade
+if isWindowOpenBar and strategy.position_size != 0
+    strategy.close_all(comment="window close")
+
+if isWindowOpenBar and canTrade and strategy.position_size == 0
+    if direction == "UP"
+        strategy.entry("UP", strategy.long)
+    else
+        strategy.entry("DOWN", strategy.short)
+
+// ========================== DISPLAY ==========================
+plotshape(isWindowOpenBar, title="Window Open", style=shape.circle, location=location.belowbar,
+     color=color.new(color.blue, 40), size=size.tiny)
+
+bgcolor(direction == "UP" ? color.new(color.green, 92) : color.new(color.red, 92))
+
+if show_table and barstate.islast
+    var table t = table.new(position.top_right, 2, array.size(v_label) + 2, bgcolor=color.new(color.black, 15), border_width=1)
+    table.cell(t, 0, 0, "FINAL CALL", text_color=color.white, bgcolor=color.new(color.gray, 50))
+    table.cell(t, 1, 0, direction + " — " + confLabel, text_color=direction == "UP" ? color.lime : color.red, bgcolor=color.new(color.gray, 50))
+    table.cell(t, 0, 1, str.tostring(nMajority) + "/" + str.tostring(nDecisive) + " agree", text_color=color.white)
+    table.cell(t, 1, 1, str.tostring(confProb, "#") + "%", text_color=color.white)
+    for i = 0 to array.size(v_label) - 1
+        float d = array.get(v_dir, i)
+        color c = d > 0 ? color.lime : d < 0 ? color.red : color.gray
+        table.cell(t, 0, i + 2, array.get(v_label, i), text_color=color.white)
+        table.cell(t, 1, i + 2, array.get(v_detail, i), text_color=c)
+
+alertcondition(isWindowOpenBar and direction == "UP" and canTrade, title="CryptoLounge UP", message="CryptoLounge: UP call")
+alertcondition(isWindowOpenBar and direction == "DOWN" and canTrade, title="CryptoLounge DOWN", message="CryptoLounge: DOWN call")
